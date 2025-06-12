@@ -4,20 +4,20 @@ import {
   Button,
   Layout,
   Card,
-  Autocomplete,
   Icon,
   Form,
   FormLayout,
   InlineStack,
-  Box
+  Box,
+  Autocomplete,
+  Select,
 } from "@shopify/polaris";
 import { DeleteIcon } from "@shopify/polaris-icons";
 import { useLoaderData, useFetcher } from "@remix-run/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { json } from "@remix-run/node";
 import { apiVersion, authenticate } from "../shopify.server";
 
-// In-memory temporary store
 let savedFields = [];
 
 export async function action({ request }) {
@@ -53,52 +53,107 @@ export async function loader({ request }) {
     const productsData = await productsRes.json();
     const products = productsData?.products || [];
 
-    const variantOptions = products.flatMap((product) =>
-      (product.variants || [])
-        .filter((variant) => variant.title !== "Default Title")
-        .map((variant) => ({
-          label: `${product.title} - ${variant.title}`,
-          value: JSON.stringify({ productName: product.title, variantId: variant.id }),
-        }))
-    );
-
-    return json({ variantOptions, savedFields });
+    return json({ products, savedFields });
   } catch (error) {
     console.error("Error in loader:", error);
-    return json({ variantOptions: [], savedFields: [] });
+    return json({ products: [], savedFields: [] });
   }
 }
 
 export default function Settings() {
-  const { variantOptions, savedFields } = useLoaderData();
-  const [name, setName] = useState("");
+  const { products, savedFields } = useLoaderData();
+  const fetcher = useFetcher();
+
   const [fields, setFields] = useState(
     savedFields.length > 0
       ? savedFields
-      : [{ text: "", variant: "", discount: "", inputValue: "" }]
+      : [
+          {
+            text: "",
+            productId: "",
+            productTitle: "",
+            variantId: "",
+            discount: "",
+          },
+        ]
   );
 
-  const fetcher = useFetcher();
+  const [inputValues, setInputValues] = useState(
+    savedFields.length > 0
+      ? savedFields.map((f) => f.productTitle || "")
+      : [""]
+  );
+
+  const [productOptions, setProductOptions] = useState(
+    products.map((p) => ({
+      label: p.title,
+      value: p.id.toString(),
+    }))
+  );
 
   const addHandler = () => {
-    setFields([...fields, { text: "", variant: "", discount: "", inputValue: "" }]);
+    setFields([
+      ...fields,
+      {
+        text: "",
+        productId: "",
+        productTitle: "",
+        variantId: "",
+        discount: "",
+      },
+    ]);
+    setInputValues([...inputValues, ""]);
   };
 
   const deleteHandler = (index) => {
-    setFields(fields.filter((_, i) => i !== index));
+    const newFields = fields.filter((_, i) => i !== index);
+    setFields(newFields);
+    setInputValues(inputValues.filter((_, i) => i !== index));
   };
 
   const saveHandler = () => {
-    const fieldsToSave = fields.map(({ inputValue, ...rest }) => rest); // inputValue frontend use k liye hai
     fetcher.submit(
-      {
-        fields: JSON.stringify(fieldsToSave),
-      },
+      { fields: JSON.stringify(fields) },
       {
         method: "POST",
         encType: "application/x-www-form-urlencoded",
       }
     );
+  };
+
+  const handleProductSearch = (value, index) => {
+    // Update input value for specific index
+    const updatedInputs = [...inputValues];
+    updatedInputs[index] = value;
+    setInputValues(updatedInputs);
+
+    // Filter product options based on input
+    const filtered = products
+      .filter((p) =>
+        p.title.toLowerCase().includes(value.toLowerCase())
+      )
+      .map((p) => ({
+        label: p.title,
+        value: p.id.toString(),
+      }));
+
+    setProductOptions(filtered);
+  };
+
+  const handleProductSelect = (selected, index) => {
+    const selectedProduct = products.find(
+      (p) => p.id.toString() === selected[0]
+    );
+
+    const updatedFields = [...fields];
+    updatedFields[index].productId = selectedProduct.id.toString();
+    updatedFields[index].productTitle = selectedProduct.title;
+    updatedFields[index].variantId = ""; // Reset variant
+    setFields(updatedFields);
+
+    const updatedInputs = [...inputValues];
+    updatedInputs[index] = selectedProduct.title;
+    setInputValues(updatedInputs);
   };
 
   return (
@@ -117,92 +172,96 @@ export default function Settings() {
           <Card>
             <Form onSubmit={saveHandler}>
               <FormLayout>
-                <TextField
-                  value={name}
-                  label="Name"
-                  onChange={setName}
-                  autoComplete="off"
-                />
+                {fields.map((item, index) => {
+                  const selectedProduct = products.find(
+                    (p) => p.id.toString() === item.productId
+                  );
+
+                  const variantOptions =
+                    selectedProduct?.variants
+                      ?.filter((v) => v.title !== "Default Title")
+                      ?.map((v) => ({
+                        label: v.title,
+                        value: v.id.toString(),
+                      })) || [];
+
+                  return (
+                    <Card key={index}>
+                      <InlineStack gap="400" align="start">
+                        <Box width="25%">
+                          <TextField
+                            value={item.text}
+                            label={`Field ${index + 1}`}
+                            onChange={(value) => {
+                              const newFields = [...fields];
+                              newFields[index].text = value;
+                              setFields(newFields);
+                            }}
+                          />
+                        </Box>
+
+                        <Box width="25%">
+                          <Autocomplete
+                            options={productOptions}
+                            selected={
+                              item.productId ? [item.productId] : []
+                            }
+                            textField={
+                              <Autocomplete.TextField
+                                label="Product"
+                                value={inputValues[index]}
+                                onChange={(value) =>
+                                  handleProductSearch(value, index)
+                                }
+                                autoComplete="off"
+                              />
+                            }
+                            onSelect={(selected) =>
+                              handleProductSelect(selected, index)
+                            }
+                          />
+                        </Box>
+
+                        <Box width="25%">
+                          <Select
+                            label="Variant"
+                            options={variantOptions}
+                            value={item.variantId}
+                            onChange={(value) => {
+                              const newFields = [...fields];
+                              newFields[index].variantId = value;
+                              setFields(newFields);
+                            }}
+                          />
+                        </Box>
+
+                        <Box width="20%">
+                          <TextField
+                            value={item.discount}
+                            label="Discount %"
+                            type="number"
+                            onChange={(value) => {
+                              const newFields = [...fields];
+                              newFields[index].discount = value;
+                              setFields(newFields);
+                            }}
+                          />
+                        </Box>
+
+                        <Box paddingBlockStart="600">
+                          <Button
+                            onClick={() => deleteHandler(index)}
+                            icon={<Icon source={DeleteIcon} />}
+                            plain
+                          />
+                        </Box>
+                      </InlineStack>
+                    </Card>
+                  );
+                })}
               </FormLayout>
             </Form>
           </Card>
-
-          {fields.map((item, index) => {
-            const filteredOptions = variantOptions.filter((option) =>
-              option.label.toLowerCase().includes((item.inputValue || "").toLowerCase())
-            );
-
-            return (
-              <Card key={index}>
-                <InlineStack gap="400" align="start">
-                  <Box width="33%">
-                    <TextField
-                      value={item.text}
-                      label={`Field ${index + 1}`}
-                      onChange={(value) => {
-                        const newFields = [...fields];
-                        newFields[index].text = value;
-                        setFields(newFields);
-                      }}
-                    />
-                  </Box>
-
-                  <Box width="33%">
-                    <Autocomplete
-                      options={filteredOptions}
-                      selected={[]}
-                      textField={
-                        <Autocomplete.TextField
-                          label="Search Variant"
-                          value={item.inputValue}
-                          onChange={(value) => {
-                            const newFields = [...fields];
-                            newFields[index].inputValue = value;
-                            setFields(newFields);
-                          }}
-                          autoComplete="off"
-                        />
-                      }
-                      onSelect={(selected) => {
-                        const selectedOption = variantOptions.find(
-                          (option) => option.value === selected[0]
-                        );
-
-                        if (selectedOption) {
-                          const parsed = JSON.parse(selectedOption.value);
-                          const newFields = [...fields];
-                          newFields[index].variant = parsed.variantId; // store variant ID
-                          newFields[index].inputValue = parsed.productName; // only product name appears
-                          setFields(newFields);
-                        }
-                      }}
-                    />
-                  </Box>
-
-                  <Box width="25%">
-                    <TextField
-                      value={item.discount}
-                      label="Discount %"
-                      type="number"
-                      onChange={(value) => {
-                        const newFields = [...fields];
-                        newFields[index].discount = value;
-                        setFields(newFields);
-                      }}
-                    />
-                  </Box>
-
-                  <Box paddingBlockStart="600">
-                    <Button
-                      onClick={() => deleteHandler(index)}
-                      icon={<Icon source={DeleteIcon} />}
-                      plain
-                    />
-                  </Box>
-                </InlineStack>
-              </Card>
-            );
-          })}
         </Layout.Section>
       </Layout>
     </Page>
