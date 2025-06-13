@@ -197,7 +197,7 @@ export default function Settings() {
                                                             <Box width="100%">
                                                                 <TextField
                                                                     value={item.text}
-                                                                    label={`Heading ${index + 1}`}
+                                                                    label={`Heading`}
                                                                     onChange={(value) => {
                                                                         const newFields = [...fields];
                                                                         newFields[index].text = value;
