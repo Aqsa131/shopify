@@ -13,12 +13,13 @@ import {
     Select,
     Toast,
     Frame,
+    Grid
 } from "@shopify/polaris";
 import { DeleteIcon } from "@shopify/polaris-icons";
 import { useLoaderData, useFetcher } from "@remix-run/react";
 import { useEffect, useState, useCallback } from "react";
 import { json } from "@remix-run/node";
-import { apiVersion, authenticate } from "../shopify.server";
+import { authenticate } from "../shopify.server";
 
 let savedFields = [];
 
@@ -41,29 +42,73 @@ export async function loader({ request }) {
     const { shop, accessToken } = session;
 
     try {
-        const productsRes = await fetch(
-            `https://${shop}/admin/api/${apiVersion}/products.json?fields=id,title,variants`,
-            {
-                method: "GET",
-                headers: {
-                    "X-Shopify-Access-Token": accessToken,
-                    "Content-Type": "application/json",
-                },
+        const graphqlQuery = {
+            query: `
+        {
+          products(first: 50) {
+            edges {
+              node {
+                id
+                title
+                variants(first: 10) {
+                  edges {
+                    node {
+                      id
+                      title
+                    }
+                  }
+                }
+                productCategory {
+                  productTaxonomyNode {
+                    fullName
+                  }
+                }
+              }
             }
-        );
+          }
+        }
+      `
+        };
 
-        const productsData = await productsRes.json();
-        const products = productsData?.products || [];
+        const res = await fetch(`https://${shop}/admin/api/2024-04/graphql.json`, {
+            method: "POST",
+            headers: {
+                "X-Shopify-Access-Token": accessToken,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(graphqlQuery),
+        });
 
-        return json({ products, savedFields });
+        const result = await res.json();
+
+        const products = result.data.products.edges.map((edge) => {
+            const product = edge.node;
+            return {
+                id: product.id,
+                title: product.title,
+                category: product.productCategory?.productTaxonomyNode?.fullName || "",
+                variants: product.variants?.edges.map((vEdge) => ({
+                    id: vEdge.node.id,
+                    title: vEdge.node.title,
+                })) || [],
+            };
+        });
+
+        const productCategories = [
+            ...new Set(products.map((p) => p.category).filter((c) => c))
+        ];
+
+        return json({ products, productCategories, savedFields });
     } catch (error) {
-        console.error("Error in loader:", error);
-        return json({ products: [], savedFields: [] });
+        console.error("Error in GraphQL loader:", error);
+        return json({ products: [], productCategories: [], savedFields: [] });
     }
 }
 
+
+
 export default function Settings() {
-    const { products, savedFields } = useLoaderData();
+    const { products, productCategories, savedFields } = useLoaderData();
     const fetcher = useFetcher();
     const [toastActive, setToastActive] = useState(false);
 
@@ -145,22 +190,22 @@ export default function Settings() {
             {toastMarkup}
 
             <Page title="Post Purchase Settings">
-                <Box  padding="400" gap="400">
+                <Box padding="400" gap="400">
                     <InlineStack gap="200" align="end">
                         <Button
-                        onClick={addHandler}
-                        variant="primary"
-                        size="large"
-                    >
-                        Add
-                    </Button>
-                    <Button
-                        onClick={saveHandler}
-                        primary
-                        size="large"
-                    >
-                        Save
-                    </Button>
+                            onClick={addHandler}
+                            variant="primary"
+                            size="large"
+                        >
+                            Add
+                        </Button>
+                        <Button
+                            onClick={saveHandler}
+                            primary
+                            size="large"
+                        >
+                            Save
+                        </Button>
                     </InlineStack>
                 </Box>
 
@@ -190,77 +235,217 @@ export default function Settings() {
                                         });
 
                                         return (
-                                            <Card key={index}>
-                                                <InlineStack gap="400" wrap={false}>
-                                                    <Box width="50%">
-                                                        <InlineStack gap="200">
-                                                            <Box width="100%">
-                                                                <TextField
-                                                                    value={item.text}
-                                                                    label={`Heading`}
-                                                                    onChange={(value) => {
-                                                                        const newFields = [...fields];
-                                                                        newFields[index].text = value;
-                                                                        setFields(newFields);
-                                                                    }}
-                                                                />
-                                                            </Box>
-                                                            <Box width="100%">
-                                                                <TextField
-                                                                    value={item.discount}
-                                                                    label="Discount %"
-                                                                    type="number"
-                                                                    onChange={(value) => {
-                                                                        const newFields = [...fields];
-                                                                        newFields[index].discount = value;
-                                                                        setFields(newFields);
-                                                                    }}
-                                                                />
-                                                            </Box>
-                                                        </InlineStack>
-                                                    </Box>
-
-                                                    <Box width="50%">
-                                                        <InlineStack gap="200">
-                                                            <Box width="100%">
-                                                                <Autocomplete
-                                                                    options={productOptions}
-                                                                    selected={[item.productId]}
-                                                                    textField={
-                                                                        <Autocomplete.TextField
-                                                                            label="Product"
-                                                                            value={inputValues[index]}
-                                                                            onChange={(value) => handleProductSearch(value, index)}
-                                                                            autoComplete="off"
+                                            <Page fullWidth key={index}>
+                                                <Box paddingBlockEnd="400">
+                                                    <Card>
+                                                        <Grid columns={{ xs: 6, sm: 6, md: 12, lg: 12, xl: 12 }}>
+                                                            {/* Left Content: All Fields */}
+                                                            <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 11, lg: 11, xl: 11 }}>
+                                                                {/* Row 1: Heading + Discount */}
+                                                                <Box paddingBlockStart="400">
+                                                                    <p style={{
+                                                                        fontWeight: 600, fontSize: '17px', paddingBottom: "10px", borderBottom: "1px solid #ccc",
+                                                                        paddingBottom: "8px",
+                                                                        marginBottom: "16px"
+                                                                    }}>Post Purchase Page</p>
+                                                                </Box>
+                                                                <InlineStack gap="400" wrap={false}>
+                                                                    <Box width="45%">
+                                                                        <p style={{ fontWeight: 600, fontSize: '14px', marginBottom: '4px' }}>Heading</p>
+                                                                        <TextField
+                                                                            value={item.text}
+                                                                            label="Heading"
+                                                                            labelHidden
+                                                                            onChange={(value) => {
+                                                                                const newFields = [...fields];
+                                                                                newFields[index].text = value;
+                                                                                setFields(newFields);
+                                                                            }}
                                                                         />
-                                                                    }
-                                                                    onSelect={(selected) => handleProductSelect(selected, index)}
-                                                                />
-                                                            </Box>
-                                                            <Box width="100%">
-                                                                <Select
-                                                                    label="Variant"
-                                                                    options={variantOptions}
-                                                                    value={item.variantId}
-                                                                    onChange={(value) => {
-                                                                        const newFields = [...fields];
-                                                                        newFields[index].variantId = value;
-                                                                        setFields(newFields);
-                                                                    }}
-                                                                />
-                                                            </Box>
-                                                        </InlineStack>
-                                                    </Box>
+                                                                    </Box>
+                                                                    <Box width="45%">
+                                                                        <p style={{ fontWeight: 600, fontSize: '14px', marginBottom: '4px' }}>Discount %</p>
+                                                                        <TextField
+                                                                            value={item.discount}
+                                                                            label="Discount %"
+                                                                            type="number"
+                                                                            labelHidden
+                                                                            onChange={(value) => {
+                                                                                const newFields = [...fields];
+                                                                                newFields[index].discount = value;
+                                                                                setFields(newFields);
+                                                                            }}
+                                                                        />
+                                                                    </Box>
+                                                                </InlineStack>
 
-                                                    <Box paddingBlockStart="600">
-                                                        <Button
-                                                            onClick={() => deleteHandler(index)}
-                                                            icon={<Icon source={DeleteIcon} />}
-                                                            plain
-                                                        />
-                                                    </Box>
-                                                </InlineStack>
-                                            </Card>
+
+                                                                {/* Row 2: Product + Variant */}
+                                                                <InlineStack gap="400" wrap={false} paddingBlockStart="300">
+                                                                    <Box width="45%">
+                                                                        <Autocomplete
+                                                                            options={productOptions}
+                                                                            selected={[item.productId]}
+                                                                            textField={
+                                                                                <Autocomplete.TextField
+                                                                                    label="Product"
+                                                                                    value={inputValues[index]}
+                                                                                    onChange={(value) => handleProductSearch(value, index)}
+                                                                                    autoComplete="off"
+                                                                                />
+                                                                            }
+                                                                            onSelect={(selected) => handleProductSelect(selected, index)}
+                                                                        />
+                                                                    </Box>
+                                                                    <Box width="45%">
+                                                                        <Select
+                                                                            label="Variant"
+                                                                            options={[
+                                                                                { label: "Select a variant", value: "" },
+                                                                                ...(selectedProduct?.variants || []).map((v) => ({
+                                                                                    label: v.title === "Default Title" ? selectedProduct.title : v.title,
+                                                                                    value: v.id.toString(),
+                                                                                })),
+                                                                            ]}
+                                                                            value={item.variantId}
+                                                                            onChange={(value) => {
+                                                                                const newFields = [...fields];
+                                                                                newFields[index].variantId = value;
+                                                                                setFields(newFields);
+                                                                            }}
+                                                                        />
+                                                                    </Box>
+                                                                </InlineStack>
+
+                                                                {/* Row 3: Rule Title */}
+                                                                <Box paddingBlockStart="400">
+                                                                    <p style={{
+                                                                        fontWeight: 600, fontSize: '17px', paddingBottom: "10px", borderBottom: "1px solid #ccc",
+                                                                        paddingBottom: "8px",
+                                                                        marginBottom: "16px"
+                                                                    }}>Select Rules</p>
+                                                                </Box>
+
+                                                                {/* Row 4: Has Product/Category + Conditional */}
+                                                                <InlineStack gap="400" wrap={false}>
+                                                                    <Box width="45%">
+                                                                        <Select
+                                                                            label="Choose Input"
+                                                                            options={[
+                                                                                { label: "Select Type", value: "" },
+                                                                                { label: "Has Product", value: "product" },
+                                                                                { label: "Has Category", value: "category" },
+                                                                            ]}
+                                                                            value={item.type || ""}
+                                                                            onChange={(value) => {
+                                                                                const newFields = [...fields];
+                                                                                newFields[index] = {
+                                                                                    ...newFields[index],
+                                                                                    type: value,
+                                                                                    newProductId: "",
+                                                                                    newVariantId: "",
+                                                                                    category: "",
+                                                                                };
+                                                                                setFields(newFields);
+                                                                            }}
+                                                                        />
+                                                                    </Box>
+
+                                                                    <Box width="45%">
+                                                                        {item.type === "product" && (
+                                                                            <>
+                                                                                <Autocomplete
+                                                                                    options={productOptions}
+                                                                                    selected={[item.newProductId || ""]}
+                                                                                    textField={
+                                                                                        <Autocomplete.TextField
+                                                                                            label="New Product"
+                                                                                            value={item.newProductTitle || ""}
+                                                                                            onChange={(value) => {
+                                                                                                const filtered = products
+                                                                                                    .filter((p) => p.title.toLowerCase().includes(value.toLowerCase()))
+                                                                                                    .map((p) => ({ label: p.title, value: p.id.toString() }));
+
+                                                                                                const updatedFields = [...fields];
+                                                                                                updatedFields[index].newProductTitle = value;
+                                                                                                setProductOptions(filtered);
+                                                                                                setFields(updatedFields);
+                                                                                            }}
+                                                                                            autoComplete="off"
+                                                                                        />
+                                                                                    }
+                                                                                    onSelect={(selected) => {
+                                                                                        const selectedProduct = products.find((p) => p.id.toString() === selected[0]);
+                                                                                        const updatedFields = [...fields];
+                                                                                        updatedFields[index].newProductId = selectedProduct.id.toString();
+                                                                                        updatedFields[index].newProductTitle = selectedProduct.title;
+                                                                                        updatedFields[index].newVariantId = "";
+                                                                                        setFields(updatedFields);
+                                                                                    }}
+                                                                                />
+                                                                                <Box marginTop="200">
+                                                                                    <Select
+                                                                                        label="New Variant"
+                                                                                        options={[
+                                                                                            { label: "Select a variant", value: "" },
+                                                                                            ...(products.find((p) => p.id.toString() === item.newProductId)?.variants || []).map((v) => ({
+                                                                                                label:
+                                                                                                    v.title === "Default Title"
+                                                                                                        ? products.find((p) => p.id.toString() === item.newProductId)?.title || "Default"
+                                                                                                        : v.title,
+                                                                                                value: v.id.toString(),
+                                                                                            })),
+                                                                                        ]}
+                                                                                        value={item.newVariantId || ""}
+                                                                                        onChange={(value) => {
+                                                                                            const updatedFields = [...fields];
+                                                                                            updatedFields[index].newVariantId = value;
+                                                                                            setFields(updatedFields);
+                                                                                        }}
+                                                                                    />
+                                                                                </Box>
+                                                                            </>
+                                                                        )}
+
+                                                                        {item.type === "category" && (
+                                                                            <Select
+                                                                                label="Category"
+                                                                                options={productCategories.map((cat) => ({
+                                                                                    label: cat,
+                                                                                    value: cat,
+                                                                                }))}
+                                                                                value={item.category || ""}
+                                                                                onChange={(value) => {
+                                                                                    const updatedFields = [...fields];
+                                                                                    updatedFields[index].category = value;
+                                                                                    setFields(updatedFields);
+                                                                                }}
+                                                                            />
+                                                                        )}
+                                                                    </Box>
+                                                                </InlineStack>
+                                                            </Grid.Cell>
+
+                                                            {/* Delete Button - Right Centered */}
+                                                            <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 1, lg: 1, xl: 1 }}>
+                                                                <Box
+                                                                    height="100%"
+                                                                    display="flex"
+                                                                    alignItems="center"
+                                                                    justifyContent="flex-end"
+                                                                >
+                                                                    <Button
+                                                                        onClick={() => deleteHandler(index)}
+                                                                        icon={DeleteIcon}
+                                                                        plain
+                                                                    />
+                                                                </Box>
+                                                            </Grid.Cell>
+                                                        </Grid>
+                                                    </Card>
+                                                </Box>
+                                            </Page>
+
                                         );
                                     })}
                                 </FormLayout>
