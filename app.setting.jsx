@@ -13,7 +13,8 @@ import {
     Select,
     Toast,
     Frame,
-    Grid
+    Grid,
+    Text
 } from "@shopify/polaris";
 import { DeleteIcon } from "@shopify/polaris-icons";
 import { useLoaderData, useFetcher } from "@remix-run/react";
@@ -197,7 +198,7 @@ export default function Settings() {
                             variant="primary"
                             size="large"
                         >
-                            Add
+                            Add Offer
                         </Button>
                         <Button
                             onClick={saveHandler}
@@ -243,15 +244,12 @@ export default function Settings() {
                                                             <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 11, lg: 11, xl: 11 }}>
                                                                 {/* Row 1: Heading + Discount */}
                                                                 <Box paddingBlockStart="400">
-                                                                    <p style={{
-                                                                        fontWeight: 600, fontSize: '17px', paddingBottom: "10px", borderBottom: "1px solid #ccc",
-                                                                        paddingBottom: "8px",
-                                                                        marginBottom: "16px"
-                                                                    }}>Post Purchase Page</p>
+                                                                    <Text as="h2" variant="headingLg">Offer # {index + 1}</Text>
                                                                 </Box>
+                                                                <hr/>
                                                                 <InlineStack gap="400" wrap={false}>
-                                                                    <Box width="45%">
-                                                                        <p style={{ fontWeight: 600, fontSize: '14px', marginBottom: '4px' }}>Heading</p>
+                                                                    <Box width="45%" paddingBlockStart="400">
+                                                                        <Text >Heading</Text>
                                                                         <TextField
                                                                             value={item.text}
                                                                             label="Heading"
@@ -263,8 +261,9 @@ export default function Settings() {
                                                                             }}
                                                                         />
                                                                     </Box>
-                                                                    <Box width="45%">
-                                                                        <p style={{ fontWeight: 600, fontSize: '14px', marginBottom: '4px' }}>Discount %</p>
+                                                                    <Box width="45%" paddingBlockStart="400">
+                                                                        <p class="Polaris-Text--bodyMd">Discount</p>
+
                                                                         <TextField
                                                                             value={item.discount}
                                                                             label="Discount %"
@@ -282,7 +281,7 @@ export default function Settings() {
 
                                                                 {/* Row 2: Product + Variant */}
                                                                 <InlineStack gap="400" wrap={false} paddingBlockStart="300">
-                                                                    <Box width="45%">
+                                                                    <Box width="45%" paddingBlockStart="400">
                                                                         <Autocomplete
                                                                             options={productOptions}
                                                                             selected={[item.productId]}
@@ -297,7 +296,7 @@ export default function Settings() {
                                                                             onSelect={(selected) => handleProductSelect(selected, index)}
                                                                         />
                                                                     </Box>
-                                                                    <Box width="45%">
+                                                                    <Box width="45%" paddingBlockStart="400">
                                                                         <Select
                                                                             label="Variant"
                                                                             options={[
@@ -318,17 +317,14 @@ export default function Settings() {
                                                                 </InlineStack>
 
                                                                 {/* Row 3: Rule Title */}
-                                                                <Box paddingBlockStart="400">
-                                                                    <p style={{
-                                                                        fontWeight: 600, fontSize: '17px', paddingBottom: "10px", borderBottom: "1px solid #ccc",
-                                                                        paddingBottom: "8px",
-                                                                        marginBottom: "16px"
-                                                                    }}>Select Rules</p>
+                                                                <Box paddingBlockStart="400" paddingBlockEnd="400">
+                                                                    <Text variant="headingLg" as="h1" paddingBlockEnd="600">Select Rules</Text>
+                                                                    <hr/>
                                                                 </Box>
-
+                                                                
                                                                 {/* Row 4: Has Product/Category + Conditional */}
                                                                 <InlineStack gap="400" wrap={false}>
-                                                                    <Box width="45%">
+                                                                    <Box width="45%" paddingBlockStart="400">
                                                                         <Select
                                                                             label="Choose Input"
                                                                             options={[
@@ -351,7 +347,7 @@ export default function Settings() {
                                                                         />
                                                                     </Box>
 
-                                                                    <Box width="45%">
+                                                                    <Box width="45%" paddingBlockStart="400">
                                                                         {item.type === "product" && (
                                                                             <>
                                                                                 <Autocomplete
@@ -444,6 +440,7 @@ export default function Settings() {
                                                         </Grid>
                                                     </Card>
                                                 </Box>
+                                                <Button>Save</Button>
                                             </Page>
 
                                         );
