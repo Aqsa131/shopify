@@ -191,7 +191,7 @@ export default function Settings() {
             {toastMarkup}
 
             <Page title="Post Purchase Settings">
-                <Box padding="400" gap="400">
+                <Box padding="400" marginTop = "400">
                     <InlineStack gap="200" align="end">
                         <Button
                             onClick={addHandler}
